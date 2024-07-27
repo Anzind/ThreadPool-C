@@ -109,6 +109,7 @@ ThreadPool* threadPoolCreate(int min, int max, int queueCapacity) {
 		for (int i = 0; i < min; i++) {
 			pthread_create(&pool->threadIds[i], NULL, worker, pool);
 		}
+		return pool;
 	} while (0);
 
 	/* 资源释放，只有当某项资源申请失败的时候，需要把线程池其他资源全部释放 */
@@ -206,8 +207,8 @@ void* manager(void* arg) {
 	ThreadPool* pool = (ThreadPool*)arg;
 
 	while (!pool->shutdown) {
-		/* 每隔5秒检测一次是否需要修改线程池工作线程数量 */
-		sleep(5);
+		/* 每隔3秒检测一次是否需要修改线程池工作线程数量 */
+		sleep(3);
 
 		/* 取出线程池中任务的数量和当前线程的数量 */
 		pthread_mutex_lock(&pool->mutexPool);
@@ -293,19 +294,20 @@ int threadPoolDestroy(ThreadPool* pool) {
 	pthread_join(pool->managerId, NULL);
 	/* 唤醒阻塞的消费者线程 */
 	for (int i = 0; i < pool->aliveNum; i++) {
-		pthread_join(pool->threadIds[i], NULL);
+		pthread_cond_signal(&pool->notEmpty);
 	}
+
+	/* 销毁互斥锁和条件变量 */
+	pthread_mutex_destroy(&pool->mutexPool);
+	pthread_mutex_destroy(&pool->mutexBusy);
+	pthread_cond_destroy(&pool->notEmpty);
+	pthread_cond_destroy(&pool->notFull);
 
 	/* 释放堆内存 */
 	if (pool->taskQ) free(pool->taskQ);
 	if (pool->threadIds) free(pool->threadIds);
 	free(pool);
-
-	/* 销毁互斥锁和条件变量 */
-	pthread_mutex_destroy(&pool->mutexBusy);
-	pthread_mutex_destroy(&pool->mutexPool);
-	pthread_cond_destroy(&pool->notEmpty);
-	pthread_cond_destroy(&pool->notFull);
+	printf("threadPool exit, thanks!\n");
 
 	pool = NULL;
 	return -1;
